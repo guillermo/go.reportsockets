@@ -9,28 +9,28 @@ It implements the http.Handler interface so you can use it with the standard net
 
 To use it, you first need to declare the channel or exchange.
 
-exchange := reportsockets.New()
+	exchange := reportsockets.New()
 
 To tie it to a url, use the standard http.
 
-http.Handle("/report", exchange.Handler()
+	http.Handle("/report", exchange.Handler()
 
 To send messages to all the clients:
 
-msg := "Hello world"
-exchange.Publish(&msg)
+	msg := "Hello world"
+	exchange.Publish(&msg)
 
 Other thing that you can do is declare a handler for reciving client messages.
 
-func myFunc(msg []byte, ws *websocket.Conn, exchange *reportsockets.Exchange){
-  ...
-  // You can responds to the specific client:
-  ws.Write(myData)
-  /e/ Or send a messages to other clients.
-  exchagne.Publish(msg)
-}
+	func myFunc(msg []byte, ws *websocket.Conn, exchange *reportsockets.Exchange){
+	  ...
+	  // You can responds to the specific client:
+	  ws.Write(myData)
+	  /e/ Or send a messages to other clients.
+	  exchagne.Publish(msg)
+	}
 
-exchange.ClientMessageHandler = myFunc
+	exchange.ClientMessageHandler = myFunc
 
 If you don't define that method, all the client messages will be ignored.
 */
@@ -38,7 +38,6 @@ package reportsockets
 
 import (
 	"code.google.com/p/go.net/websocket"
-	"fmt"
 	"net/http"
 )
 
@@ -61,17 +60,15 @@ func New() *Exchange {
 	go e.loop()
 	return e
 }
+
 func (e *Exchange) loop() {
 
 forLoop:
 	for {
-		fmt.Println("Starting for loop")
 		select {
 		case newClient := <-e.newClientChan:
-			fmt.Println("We recive a new client")
 			e.clients = append(e.clients, newClient)
 		case msg := <-e.publishChan:
-			fmt.Println("We recive a new message")
 			for i, client := range e.clients {
 				_, err := client.Write(msg)
 				if err != nil {
@@ -80,13 +77,11 @@ forLoop:
 				}
 			}
 		case <-e.stopChan:
-			fmt.Println("We were tell to stop")
 			for _, client := range e.clients {
 				client.Close()
 			}
 			break forLoop
 		case oldWs := <-e.removeClientChan:
-			fmt.Println("We remove an old client")
 			for i, ws := range e.clients {
 				if oldWs == ws {
 					e.clients = append(e.clients[:i], e.clients[(i+1):]...)
@@ -94,7 +89,10 @@ forLoop:
 			}
 		}
 	}
-	fmt.Println("This is the end")
+	for _ = range e.clients {
+		<-e.removeClientChan
+	}
+	e.clients = e.clients[0:0]
 }
 
 func (e *Exchange) Handler() http.Handler {
@@ -105,11 +103,12 @@ func (e *Exchange) Handler() http.Handler {
 			data := make([]byte, 1024*10)
 			_, err := ws.Read(data)
 			if err != nil {
-				fmt.Println("We teel to stop")
-				// We can not remove the client e.removeClientChan <- ws
+				e.removeClientChan <- ws
 				break
 			}
-			// Do something with erthe message recived by the client
+			if e.ClientMessageHandler != nil {
+				e.ClientMessageHandler(data, ws, e)
+			}
 		}
 	}
 	return websocket.Handler(handler)
@@ -120,5 +119,5 @@ func (e *Exchange) Publish(msg []byte) {
 }
 
 func (e *Exchange) Stop() {
-	close(e.stopChan)
+	e.stopChan <- true
 }
