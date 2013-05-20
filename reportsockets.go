@@ -13,7 +13,7 @@ To use it, you first need to declare the channel or exchange.
 
 To tie it to a url, use the standard http.
 
-	http.Handle("/report", exchange.Handler()
+	http.Handle("/report", exchange.Handler())
 
 To send messages to all the clients:
 
@@ -33,6 +33,12 @@ Other thing that you can do is declare a handler for reciving client messages.
 	exchange.ClientMessageHandler = myFunc
 
 If you don't define that method, all the client messages will be ignored.
+
+Once you are done, you can close it with Stop.
+
+	exchange.Stop()
+
+This will close all the websocket connections
 */
 package reportsockets
 
@@ -41,6 +47,7 @@ import (
 	"net/http"
 )
 
+// Exchange represent the main point to subscribe
 type Exchange struct {
 	ClientMessageHandler func(msg []byte, ws *websocket.Conn, exchange *Exchange)
 	clients              []*websocket.Conn
@@ -50,6 +57,7 @@ type Exchange struct {
 	stopChan             chan bool
 }
 
+// New return a new exchange
 func New() *Exchange {
 	e := new(Exchange)
 	e.clients = make([]*websocket.Conn, 0)
@@ -62,7 +70,6 @@ func New() *Exchange {
 }
 
 func (e *Exchange) loop() {
-
 forLoop:
 	for {
 		select {
@@ -95,6 +102,7 @@ forLoop:
 	e.clients = e.clients[0:0]
 }
 
+// Handler return the http handler for this exchange.
 func (e *Exchange) Handler() http.Handler {
 	// ws.Close will be called when returning from this func
 	handler := func(ws *websocket.Conn) {
@@ -114,10 +122,12 @@ func (e *Exchange) Handler() http.Handler {
 	return websocket.Handler(handler)
 }
 
+// Publish Broadcast the message to all the clients
 func (e *Exchange) Publish(msg []byte) {
 	e.publishChan <- msg
 }
 
+// Stop will stop the exchange and close all the ws connections
 func (e *Exchange) Stop() {
 	e.stopChan <- true
 }
