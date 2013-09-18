@@ -70,12 +70,18 @@ func New() *Exchange {
 }
 
 func (e *Exchange) loop() {
+	var lastMsg []byte
 forLoop:
 	for {
 		select {
 		case newClient := <-e.newClientChan:
+			// Send last report
+			if len(lastMsg) != 0 {
+				newClient.Write(lastMsg)
+			}
 			e.clients = append(e.clients, newClient)
 		case msg := <-e.publishChan:
+			lastMsg = msg
 			for i, client := range e.clients {
 				_, err := client.Write(msg)
 				if err != nil {
